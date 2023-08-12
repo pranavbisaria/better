@@ -19,7 +19,7 @@ import java.util.List;
 @SpringBootApplication
 @RequiredArgsConstructor
 @EnableAsync
-@OpenAPIDefinition(info = @Info(title = "ShopIT: E-Commerce Application",version = "3.0",description = "Complete APIs for ShopIT - An E-Commerce application"))
+@OpenAPIDefinition(info = @Info(title = "BETTER: Reshape, Renew, Better You",version = "3.0",description = "Promoting sustainability for all"))
 @EnableCaching
 public class BetterAppApplication implements CommandLineRunner {
 	private final RoleRepo roleRepo;
