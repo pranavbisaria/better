@@ -1,0 +1,157 @@
+package com.Better.Service.Impl;
+
+import com.Better.Config.UserCache;
+import com.Better.Exceptions.ResourceNotFoundException;
+import com.Better.Models.Address;
+import com.Better.Models.Profile;
+import com.Better.Models.User;
+import com.Better.Payloads.*;
+import com.Better.Repository.AddressRepo;
+import com.Better.Repository.ProfileRepo;
+import com.Better.Repository.UserRepo;
+import com.Better.Security.JwtTokenHelper;
+import com.Better.Service.OTPService;
+import com.Better.Service.UserService;
+import lombok.RequiredArgsConstructor;
+import org.modelmapper.ModelMapper;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.stereotype.Service;
+import java.util.Objects;
+import static org.springframework.http.HttpStatus.NOT_ACCEPTABLE;
+import static org.springframework.http.HttpStatus.OK;
+
+import java.util.Set;
+
+@Service
+@RequiredArgsConstructor
+public class UserServiceImpl implements UserService {
+    private final ModelMapper modelMapper;
+    private final OTPService otpService;
+    private final JwtTokenHelper jwtTokenHelper;
+    private final UserCache userCache;
+    private final UserRepo userRepo;
+    private final UserDetailsService userDetailsService;
+    private final AddressRepo addressRepo;
+    private final ProfileRepo profileRepo;
+    @Override
+    public ResponseEntity<?> updateUserProfile(User user, UserProfile userProfile) {
+        if (userProfile.getGender().equals("f")) {
+            user.setGender("female");
+        } else {
+            user.setGender("male");
+        }
+        user.setFirstname(userProfile.getFirstname());
+        user.setLastname(userProfile.getLastname());
+        this.userRepo.save(user);
+        userProfile = this.modelMapper.map(user, UserProfile.class);
+        return new ResponseEntity<>(userProfile, OK);
+    }
+    @Override
+    public ResponseEntity<?> verifyResetPhoneOTP(User user, TwilioCacheDto twilioCacheDto){
+        if (!this.userCache.isCachePresent(user.getEmail())) {
+            return new ResponseEntity<>(new ApiResponse("Invalid Request", false), HttpStatus.FORBIDDEN);
+        }
+        TwilioCacheDto storedOtpDto = (TwilioCacheDto)this.userCache.getCache(user.getEmail());
+        if (Objects.equals(storedOtpDto.getOne_time_password(), twilioCacheDto.getOne_time_password())) {
+            this.userCache.clearCache(user.getEmail());
+            user.setPhoneNumber(twilioCacheDto.getPhoneNumber());
+            this.userRepo.save(user);
+            return new ResponseEntity<>(new ApiResponse("OTP successfully verified, phone number has been updated", true), HttpStatus.OK);
+        } else {
+            return new ResponseEntity<>(new ApiResponse("Invalid OTP or Action not required!!", false), HttpStatus.NOT_ACCEPTABLE);
+        }
+    }
+    @Override
+    public ResponseEntity<?> sendEmailOTP(User user, String email) throws Exception {
+        if(this.userRepo.findByEmail(email).isPresent()){
+            return new ResponseEntity<>(new ApiResponse("Entered email already linked with other account", false), NOT_ACCEPTABLE);
+        }
+        try {
+            if (this.userCache.isCachePresent(email)) {
+                this.userCache.clearCache(email);
+            }
+            OtpDto otpDto = new OtpDto(email, this.otpService.OTPRequest(email), null, false);
+            this.userCache.setUserCache(email, otpDto);
+            return new ResponseEntity<>(new ApiResponse("OTP Sent Success on the entered Email", true), HttpStatus.OK);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new ResponseEntity<>(new ApiResponse("Can't able to make your request", false), HttpStatus.SERVICE_UNAVAILABLE);
+        }
+    }
+    @Override
+    public ResponseEntity<?> verifyResetEmailOTP(User user, OtpDto otpDto){
+        if (!this.userCache.isCachePresent(otpDto.getEmail())) {
+            return new ResponseEntity<>(new ApiResponse("Invalid Request", false), HttpStatus.FORBIDDEN);
+        }
+        OtpDto storedOtpDto = (OtpDto)this.userCache.getCache(otpDto.getEmail());
+        if (Objects.equals(storedOtpDto.getOne_time_password(), otpDto.getOne_time_password())) {
+            this.userCache.clearCache(otpDto.getEmail());
+            user.setEmail(otpDto.getEmail());
+            this.userRepo.saveAndFlush(user);
+            UserDetails userDetails = this.userDetailsService.loadUserByUsername(otpDto.getEmail());
+            JwtAuthResponse response = new JwtAuthResponse(
+                    this.jwtTokenHelper.generateAccessToken(userDetails),
+                    this.jwtTokenHelper.generateRefreshToken(userDetails),
+                    user.getFirstname(),
+                    user.getLastname(),
+                    otpDto.getEmail(),
+                    user.getRoles()
+            );
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        }
+        return new ResponseEntity<>(new ApiResponse("Invalid OTP or Action not required!!", false), HttpStatus.NOT_ACCEPTABLE);
+    }
+//-----------------------------------------------Address----------------------------------------------------------------------------
+
+    @Override
+    public ResponseEntity<?> getAllAddress(User user){
+        Profile profile = this.profileRepo.findByUser(user);
+        Set<Address> addresses = profile.getAddress();
+        return new ResponseEntity<>(addresses, OK);
+    }
+    @Override
+    public ResponseEntity<?> addAddress(User user, AddressDto addressDto){
+        Profile profile = this.profileRepo.findByUser(user);
+        Address address = this.modelMapper.map(addressDto, Address.class);
+        profile.getAddress().add(address);
+        this.profileRepo.save(profile);
+        Profile updatedProfile = this.profileRepo.findByUser(user);
+        return new ResponseEntity<>(updatedProfile.getAddress(), OK);
+    }
+    @Override
+    public ResponseEntity<?> updateAddress(User user, AddressDto addressDto, Long addressId){
+        Address address = this.addressRepo.findById(addressId).orElseThrow(()-> new ResourceNotFoundException("Address", "addressId", addressId));
+        Profile profile = this.profileRepo.findByUser(user);
+        if(!profile.getAddress().contains(address)){
+            return new ResponseEntity<>(new ApiResponse("User not authorize to perform the action", false), HttpStatus.FORBIDDEN);
+        }
+        address.setType(addressDto.getType());
+        address.setName(addressDto.getName());
+        address.setMobile(addressDto.getMobile());
+        address.setPincode(addressDto.getPincode());
+        address.setLocality(addressDto.getLocality());
+        address.setAddressLine(addressDto.getAddressLine());
+        address.setCity(addressDto.getCity());
+        address.setState(addressDto.getState());
+        address.setLandmark(addressDto.getLandmark());
+        address.setMobile_alternative(addressDto.getMobile_alternative());
+        this.addressRepo.saveAndFlush(address);
+        Profile updatedProfile = this.profileRepo.findByUser(user);
+        return new ResponseEntity<>(updatedProfile.getAddress(), OK);
+    }
+    @Override
+    public ResponseEntity<?> removeAddress(User user, Long addressId){
+        Address address = this.addressRepo.findById(addressId).orElseThrow(()-> new ResourceNotFoundException("Address", "addressId", addressId));
+        Profile profile = this.profileRepo.findByUser(user);
+        if(!profile.getAddress().contains(address)){
+            return new ResponseEntity<>(new ApiResponse("User not authorize to perform the action", false), HttpStatus.FORBIDDEN);
+        }
+        profile.getAddress().remove(address);
+        this.userRepo.save(user);
+        this.addressRepo.delete(address);
+        return new ResponseEntity<>(new ApiResponse("Address has been successfully deleted", true), OK);
+    }
+}
