@@ -16,4 +16,11 @@ public class Tasks {
     private Long id;
     private String heading;
     private String description;
+    private Integer categoryId;
+
+    public Tasks(String heading, String description, Integer categoryId) {
+        this.heading = heading;
+        this.description = description;
+        this.categoryId = categoryId;
+    }
 }

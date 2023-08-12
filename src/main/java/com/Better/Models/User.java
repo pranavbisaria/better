@@ -43,6 +43,8 @@ public class User implements UserDetails {
     @ManyToMany(cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @JoinTable(name = "user_role", joinColumns = @JoinColumn(name = "user", referencedColumnName = "id"), inverseJoinColumns =  @JoinColumn(name = "role", referencedColumnName = "id"))
     private Set<Role> roles = new HashSet<>(0);
+    private Long currentBalance;
+    private Long lifeTimeBalance;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

@@ -19,5 +19,4 @@ public class Category {
     private Integer categoryId;
     @Column(nullable = false)
     private String categoryName;
-    private String imageName;
 }

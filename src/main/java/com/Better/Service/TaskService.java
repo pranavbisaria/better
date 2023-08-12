@@ -1,5 +1,6 @@
 package com.Better.Service;
 
+import com.Better.Models.Category;
 import com.Better.Models.Tasks;
 import org.springframework.http.RequestEntity;
 import org.springframework.http.ResponseEntity;
@@ -7,4 +8,6 @@ import org.springframework.http.ResponseEntity;
 public interface TaskService {
     ResponseEntity<?> createPost(Tasks tasks);
     ResponseEntity<?> getAll();
+
+    ResponseEntity<?> createPost(Category category) ;
 }
